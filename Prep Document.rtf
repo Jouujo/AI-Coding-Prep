@@ -1,362 +1,382 @@
-{\rtf1\ansi\ansicpg1252\cocoartf2761
-\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fnil\fcharset0 AmericanTypewriter;}
-{\colortbl;\red255\green255\blue255;}
-{\*\expandedcolortbl;;}
-\margl1440\margr1440\vieww18540\viewh11780\viewkind0
-\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+================================================================================
+BLOOMBERG 2027 SWE INTERVIEW PREPARATION COMPENDIUM
+Author: Joanna & Prep Group | Target: Strong Hire
+Calibrated to Official Bloomberg Workshop Rubrics & AI-Assisted Assessment Criteria
+================================================================================
 
-\f0\fs24 \cf0 ================================================================================\
-BLOOMBERG 2027 SWE INTERVIEW PREPARATION COMPENDIUM\
-Author: Joanna & Prep Group | Target: Strong Hire\
-Calibrated to Official Bloomberg Engineering Rubrics (5-Stage Design & 6-Step Debug Loop)\
-================================================================================\
-\
---------------------------------------------------------------------------------\
-PART 1: AI CODEBASE GENERATOR PROMPTS (FOR IDE / CHATBOT DRIVERS)\
---------------------------------------------------------------------------------\
-Use these prompts when you want an LLM (Claude, Cursor, ChatGPT, Antigravity) to \
-generate realistic, multi-file practice codebases with hidden boundary defects.\
-\
-[PROMPT 1: CORE BLOOMBERG CODEBASE GENERATOR (ANY DOMAIN)]\
---------------------------------------------------------------------------------\
-Act as a Senior Bloomberg Software Engineer setting up an AI-assisted codebase \
-debugging interview repository. I am the candidate practicing top-down codebase \
-navigation, domain data modeling, and the official Bloomberg 6-Step Debug Loop.\
-\
-Generate a realistic, production-style Python repository (10 to 15 files) with \
-the following specifications:\
-\
-1. Clean Architecture & Separation of Concerns:\
-   - app/models.py: Domain entities using @dataclass. Enforce domain invariants:\
-     * Monetary / quantitative values MUST be integer cents/basis points (never float).\
-     * Discrete lifecycles MUST use strict Enum classes (no raw strings).\
-     * Completed/historical records MUST use frozen dataclasses (@dataclass(frozen=True))\
-       and immutable collections (tuple[...], never live mutable list[...]).\
-   - app/exceptions.py: Explicit domain exception hierarchy.\
-   - Core Orchestrator (e.g., app/service.py): Stateless coordinator injecting dependencies.\
-   - Business Logic / Rules Engine (e.g., app/calculator.py or app/risk_engine.py).\
-   - In-Memory Persistence / State (e.g., app/repository.py or app/book.py).\
-   - Entry Point (main.py): Demonstrating end-to-end execution.\
-\
-2. Bug Injection (Derived Strictly from Spec Violations):\
-   - Inject 2 distinct, subtle logic bugs into the business logic:\
-     * Bug A: A boundary condition or range defect (e.g., off-by-one, improper \
-       inequality comparison <= vs <, missing zero-padding, or integer division truncation).\
-     * Bug B: A state leakage or improper mutation defect (e.g., mutating an internal \
-       collection after event closure, or failing to clean up active state registries).\
-   - Do NOT fix the bugs, do NOT tell me where they are, and do NOT write unit tests \
-     for these bugs. Existing baseline tests in tests/ must PASS for normal cases.\
-\
-3. README.md:\
-   - Provide a professional README with:\
-     * System Architecture Overview (Entry Points, Models, Orchestrator, State).\
-     * Explicit Business Invariants & Spec Claims (the contracts the system claims to uphold).\
-     * 2 Customer Issue Tickets (e.g., "Ticket BLP-101" and "Ticket BLP-102") describing \
-       observed failing symptoms from callers without revealing the offending lines.\
-   - Ensure pytest can run cleanly in the terminal.\
---------------------------------------------------------------------------------\
-\
-\
-[PROMPT 2: THE OFFICIAL "POT LUCK" LOTTERY ENGINE GENERATOR]\
---------------------------------------------------------------------------------\
-Generate the exact multi-file Python repository for the official Bloomberg \
-"Pot Luck" community lottery fundraiser problem:\
-\
-1. System Rules & Domain Invariants:\
-   - Base pot starts at $10,000 (represented strictly as 1,000,000 integer cents).\
-   - Each ticket entry costs $5 (500 cents), which is added to the pot pool.\
-   - Code assignment: generates a 5-digit code string from "00000" to "99999" inclusive.\
-   - Reverse-order claim priority: 5 matches (100%), 4 matches (40%), 3 matches (20%), \
-     2 matches (5%), 1 match (0%). Higher tiers claim first; remaining pot rolls over.\
-   - Odd-cent splits: When dividing pot among winners leaves indivisible cents, \
-     remainder cents must roll over to the next draw rather than leaking.\
-   - A Draw is a closed historical event: entries_snapshot must be a frozen tuple of Entry.\
-\
-2. Files to Generate:\
-   - app/models.py: Entry, Draw, Payout, PayoutPlan, MatchTier (Enum).\
-   - app/generator.py: CodeGenerator taking an injectable _random_source callable.\
-   - app/lottery_engine.py: DrawManager coordinating draws, match calculations, and payouts.\
-   - app/exceptions.py: DrawClosedError, InvalidCodeError, DuplicateEntryError.\
-   - tests/test_lottery.py: 3 passing baseline tests for standard draws.\
-\
-3. Bug Injection:\
-   - In app/generator.py, implement _generate_code using:\
-     `number = int(self._random_source() * 99_999)` and `str(number)`.\
-     (This injects both the off-by-one upper bound bug and the missing zero-padding bug).\
-   - In app/lottery_engine.py, introduce an odd-cent remainder calculation defect where \
-     indivisible cents are dropped instead of rolled over.\
-   - Provide README.md with Tickets POT-101 (codes never reach 99999 / format broken) \
-     and POT-102 (audit balance discrepancy on odd-winner payouts).\
---------------------------------------------------------------------------------\
-\
-\
---------------------------------------------------------------------------------\
-PART 2: BLOOMBERG 5-STAGE SYSTEM DESIGN QUESTION BANK\
---------------------------------------------------------------------------------\
-Use the 5-Stage framework for every system design problem:\
-Stage 01: Clarify (Requirements & Out-of-Scope)\
-Stage 02: Interactions (Client Actions & Concrete REST/gRPC APIs)\
-Stage 03: Identify Data (Relational Entities, Schema, Primary Keys, Invariants)\
-Stage 04: Draw Simple Design (Minimum 3-Tier: App <-> Service <-> SQL DB)\
-Stage 05: Challenge & Improve (Bottlenecks, Cache Invalidation, Concurrency, Failures)\
---------------------------------------------------------------------------------\
-\
-================================================================================\
-QUESTION 1: ROOM BOOKING SYSTEM (Official Bloomberg Workshop Question)\
-================================================================================\
-Problem Statement:\
-Design a room reservation system for a campus or corporate office where users \
-can search for available meeting rooms based on filters and book or cancel rooms.\
-\
-Stage 01: Clarify\
-- Functional Reqs: Search available rooms by building, capacity, and amenities; \
-  reserve a room for a specific time window; view personal bookings; cancel a booking.\
-- Non-Functional Reqs: High availability for reads; strong consistency for bookings \
-  (zero double-booking allowed); latency < 50ms for search.\
-- Out of Scope: Payment processing, recurring calendar invites, room access badge IoT.\
-\
-Stage 02: Interactions (APIs)\
-- GET /rooms?building=\{b\}&min_capacity=\{c\}&facilities=\{f\}&start_time=\{t1\}&end_time=\{t2\}\
-- GET /rooms/\{id\} -> Room details\
-- GET /me/bookings -> List authenticated user bookings\
-- POST /bookings -> Request: \{room_id, start_time, end_time\}. Returns: \{booking_id, status: CONFIRMED\}\
-- DELETE /bookings/\{id\} -> Request cancellation. Returns: 204 No Content\
-\
-Stage 03: Data Model (PostgreSQL / Relational)\
-- students / users: user_id (PK), name, email, department\
-- rooms: room_id (PK), building, capacity, facilities (JSON/ARRAY), is_active\
-- bookings: booking_id (PK), user_id (FK), room_id (FK), start_time (TIMESTAMP), \
-  end_time (TIMESTAMP), status (Enum: PENDING, CONFIRMED, CANCELLED)\
-- Domain Invariant: A room MUST NOT have overlapping active bookings:\
-  EXCLUDE USING gist (room_id WITH =, tsrange(start_time, end_time) WITH &&) \
-  WHERE (status = 'CONFIRMED')\
-\
-Stage 04: Simple Design\
-- Web / Mobile App <---> Booking Service <---> PostgreSQL Database\
-- Booking Service handles validation, search querying, and transaction execution.\
-\
-Stage 05: Challenge & Improve\
-- Bottleneck: Frequent room searches create heavy read load on PostgreSQL.\
-- Mitigation: Introduce Redis Cache for room metadata and static availability bitmaps.\
-- Cache Invalidation: When a booking is confirmed or canceled, invalidate search cache \
-  keys for that specific room and time slice (Cache-Aside pattern).\
-- Race Condition / Double Booking: Two users attempt to book Room A at 2:00 PM simultaneously.\
-  Use DB transaction with `SELECT ... FOR UPDATE` or PostgreSQL range exclusion constraints.\
-\
-\
-================================================================================\
-QUESTION 2: HOLIDAY SERVICE (Low-Latency C++ SDK & Aggregator)\
-================================================================================\
-Problem Statement:\
-Design a Holiday Service exposing `getData(countryCode, year)` returning all public \
-holidays. Many internal client applications access it through a shared C++ adapter. \
-The service fetches data from an external/lower-level service that is slow (150ms). \
-Target latency for clients is < 5ms.\
-\
-Stage 01: Clarify\
-- Functional Reqs: Return holiday list with date, name, and observed status. \
-  Support historical years and future schedules. Transform date format (MM/DD -> YYYY/MM/DD).\
-- Non-Functional Reqs: End-to-end latency < 5ms for clients; 99.99% availability; \
-  graceful fallback if the upstream service experiences an outage.\
-- Out of Scope: Scheduling calendar events, managing national calendar laws.\
-\
-Stage 02: Interactions (APIs)\
-- Client SDK Interface: `std::vector<Holiday> getData(const std::string& countryCode, int year);`\
-- Service REST API: GET /v1/holidays?country=\{countryCode\}&year=\{year\}\
-- Response: 200 OK: `\{"country": "US", "year": 2027, "holidays": [\{"date": "2027-01-01", "name": "New Year's Day"\}]\}`\
-\
-Stage 03: Data Model\
-- holidays: id (PK), country_code (CHAR(2)), year (INT), holiday_date (DATE), \
-  name (VARCHAR), is_observed (BOOL), last_updated (TIMESTAMP)\
-- Unique Index: (country_code, year, holiday_date)\
-\
-Stage 04: Simple Design\
-- Client App -> C++ Adapter Library -> Holiday Service -> Upstream External API\
-\
-Stage 05: Challenge & Improve\
-- Multi-Tier Caching Architecture:\
-  * Tier 1 (Client-Side C++ In-Memory Cache): Cache results directly in local process RAM \
-    inside the C++ library (LRU Cache with 24-hour TTL). Latency: < 10 microseconds.\
-  * Tier 2 (Distributed Redis Cache at Service Layer): Shared across all Holiday Service instances.\
-- Precomputation / Background Sync: Holidays change rarely. A daily cron worker fetches \
-  and precomputes all countries for (current_year, current_year + 1) and warms Redis.\
-- Resilience: If upstream service goes down, serve stale cached data with fallback header.\
-\
-\
-================================================================================\
-QUESTION 3: REAL-TIME VWAP ANALYTICS PROVIDER\
-================================================================================\
-Problem Statement:\
-Design a Volume-Weighted Average Price (VWAP) provider ingesting real-time trade ticks \
-from 100 exchanges (100K-1M symbols, 100 ticks/sec/symbol, ~20 bytes/tick). Continuous \
-running computation across time windows. Serve 100K screen users via WebSocket push and \
-1K enterprise users via query APIs.\
-\
-Stage 01: Clarify\
-- Math Formula: VWAP = (Sum of Price * Volume) / (Sum of Volume) for time window T.\
-- Capacity Math: 1M symbols * 100 ticks/sec = 100,000,000 ticks/sec total peak volume.\
-- User Groups: 100K live UI users (low latency WebSocket push), 1K enterprise users (REST API).\
-\
-Stage 02: Interactions (APIs)\
-- Feed Ingestion: High-speed TCP/UDP feed handlers normalizing exchange formats.\
-- WebSocket Stream: `SUBSCRIBE /vwap/\{symbol\}?window=1h` -> Pushes `\{symbol, vwap, volume, timestamp\}`.\
-- Enterprise Query API: GET /v1/vwap?symbol=AAPL&start_time=\{t1\}&end_time=\{t2\}\
-\
-Stage 03: Data Model & Invariants\
-- Canonical Tick: symbol (str), price_cents (int), quantity (int), timestamp_ns (int).\
-- Running Aggregate State: symbol (PK), window_start, cum_volume (int), cum_pv_cents (int).\
-- VWAP Invariant: Computed on the fly via integer division `cum_pv_cents // cum_volume`.\
-\
-Stage 04: Simple Design\
-- Exchange Feeds -> Ingestion Gateway -> Stream Processor (Flink/Kafka) -> Redis -> WebSockets/API.\
-\
-Stage 05: Challenge & Improve\
-- Sharding Strategy: Shard streaming processors strictly by `hash(symbol) % N_partitions`. \
-  Ensures all ticks for a single symbol arrive at the same stateful aggregation worker in order.\
-- Fault Tolerance: Checkpoint running cumulative aggregates (`cum_pv`, `cum_vol`) to \
-  changelogs (Kafka compacted topic) every 500ms. On worker crash, rebuild in < 1 second.\
-- WebSocket Fan-Out: Use a Pub/Sub tier (Redis / NATS) broadcasting to stateless WebSocket edge nodes.\
-\
-\
-================================================================================\
-QUESTION 4: BUILD CACHE (CI/CD Acceleration)\
-================================================================================\
-Problem Statement:\
-Bloomberg developers experience slow builds and test executions in CI/CD pipelines. \
-Design an internal distributed build artifact cache to accelerate compilation and test runs.\
-\
-Stage 01: Clarify\
-- Functional Reqs: Check if a build task's inputs have already been compiled/tested; \
-  retrieve pre-built binary artifact if present; upload new artifact if cache miss.\
-- Non-Functional Reqs: Cache lookup latency < 20ms; high network throughput for binary blobs; \
-  deterministic artifact retrieval (cryptographic correctness).\
-- Out of Scope: Executing the build compiler itself (handled by build agents).\
-\
-Stage 02: Interactions (APIs)\
-- GET /v1/artifacts/\{hash_key\} -> Stream binary blob (200 OK) or 404 Not Found.\
-- PUT /v1/artifacts/\{hash_key\} -> Upload binary artifact stream with metadata.\
-\
-Stage 03: Data Model & Key Invariants\
-- Content-Addressed Hash: `hash_key = SHA256(source_code_files + compiler_version + flags + env_deps)`\
-- Artifact Metadata Table (Metadata DB):\
-  * hash_key (PK, CHAR(64)), artifact_size_bytes (BIGINT), s3_storage_uri (VARCHAR), \
-    created_at (TIMESTAMP), last_accessed_at (TIMESTAMP)\
-- Storage Tier: Raw binary `.o` or `.tar.gz` files stored in distributed Blob Store (Ceph / S3 / MinIO).\
-\
-Stage 04: Simple Design\
-- Build Agent <---> Cache Service (Metadata Lookup) <---> Blob Storage (S3) + PostgreSQL DB.\
-\
-Stage 05: Challenge & Improve\
-- Eviction Policy: LRU (Least Recently Used) paired with a TTL (e.g., evict artifacts \
-  not requested for 20 days).\
-- Consistent Hashing: Shard local fast NVMe SSD edge storage servers using consistent \
-  hash ring with virtual nodes for multi-gigabit streaming.\
-- Cache Stampede: 50 builds trigger concurrently on the exact same commit. \
-  Implement single-flight / mutex locking: only 1 agent builds, the other 49 await the artifact.\
-\
-\
-================================================================================\
-QUESTION 5: WEB APP DESIGN (Sensitive Financial Information)\
-================================================================================\
-Problem Statement:\
-Design an enterprise financial web application supporting user onboarding, password \
-reset, company financial information requests, and IT help requests. Deployments must \
-be independent, authenticated, auditable, and resilient.\
-\
-Stage 01: Clarify\
-- Functional Reqs: Secure registration, authentication (MFA), password reset workflows, \
-  financial company data queries, and IT ticket submission.\
-- Non-Functional Reqs: Strict security (SOC2 / PCI-DSS compliance); end-to-end encryption; \
-  zero-downtime blue/green deployments; full immutable audit logging.\
-\
-Stage 02: Interactions (APIs)\
-- POST /auth/login -> \{email, password_hash, mfa_token\} -> Returns JWT / session cookie.\
-- POST /auth/password-reset/request -> Trigger signed time-limited reset email.\
-- GET /api/v1/companies/\{id\}/financials -> Sensitive financial filings (requires RBAC check).\
-- POST /api/v1/support/tickets -> Submit encrypted IT ticket.\
-\
-Stage 03: Data Model\
-- users: user_id (PK), email (UNIQUE), password_hash (Argon2), role_id (FK), mfa_secret\
-- roles_permissions: role_id, permission_enum (e.g., READ_FINANCIALS, MANAGE_USERS)\
-- audit_log (Append-Only): log_id (PK), timestamp, user_id, action, resource_id, ip_address, signature\
-- Database Choice: PostgreSQL with Row-Level Security (RLS) and column-level encryption for PII.\
-\
-Stage 04: Simple Design\
-- Client Browser <-> API Gateway / WAF <-> App Backend Service <-> PostgreSQL Database.\
-\
-Stage 05: Challenge & Improve\
-- Zero-Downtime Blue/Green Deployments: Deploy duplicate Green environment; run smoke tests; \
-  shift traffic at load balancer level; roll back immediately on error rate spike.\
-- Token Revocation / Logout: Use short-lived JWTs (15 min) + Redis distributed blocklist for logout.\
-- Defense in Depth: API Gateway rate limits password-reset endpoints to prevent brute-force attacks.\
-\
-\
-================================================================================\
-QUESTION 6: KAFKA / DISTRIBUTED LOG DESIGN\
-================================================================================\
-Problem Statement:\
-Design a distributed message streaming broker system (Kafka-like architecture) covering \
-producers, consumers, partitions, brokers, message ordering, and replication under network splits.\
-\
-Stage 01: Clarify\
-- Functional Reqs: Publish messages to topics; consume messages from topics starting at \
-  an offset; maintain strict FIFO ordering within each partition; support consumer groups.\
-- Non-Functional Reqs: Append-only disk write speeds; fault-tolerant replication (tolerating N-1 broker failures).\
-\
-Stage 02: Interactions (APIs)\
-- Producer SDK: `send(topic, key, value, acks)`\
-- Consumer SDK: `poll(timeout)`, `commit(offset)`\
-- Broker RPC: `AppendEntries(topic, partition, messages)`, `Fetch(topic, partition, offset, max_bytes)`\
-\
-Stage 03: Data Model & Storage Engine\
-- On-Disk Storage Format: Append-only commit log files (e.g., `0000000000.log`) segmented at 1GB.\
-- Index File (`0000000000.index`): Memory-mapped sparse index mapping logical offset -> physical byte offset.\
-- Message Record: offset (INT64), timestamp (INT64), key_bytes, value_bytes, crc32.\
-\
-Stage 04: Simple Design\
-- Producer -> Broker Leader (Append-only write to active segment) -> Consumer reads via offset.\
-\
-Stage 05: Challenge & Improve\
-- Message Ordering Guarantee: Strict ordering is guaranteed ONLY per partition. \
-  Producers hash message keys to assign partitions: `partition = hash(key) % num_partitions`.\
-- Network Failures & Misrouted Messages: If Producer 1 tries to send to Broker 2 due to network error, \
-  Broker 1 rejects it with `NOT_LEADER_OR_FOLLOWER`. Producer metadata refreshes cluster state.\
-- Durability vs. Availability (CAP Trade-off):\
-  * `acks=all`: Leader waits for In-Sync Replicas (ISR) to commit before acknowledging.\
-  * Quorum math: Min-ISR = 2 with replication factor 3 prevents split-brain during partitions.\
-\
-\
-================================================================================\
-QUESTION 7: NEWS FEED / MOST READ ARTICLES\
-================================================================================\
-Problem Statement:\
-Design a system that receives `read_event(articleId)` whenever a user views an article, \
-and exposes an API `get_most_read_articles()` to return the trending/most-read articles \
-within a rolling time window (e.g., past 24 hours).\
-\
-Stage 01: Clarify\
-- Functional Reqs: Ingest millions of click events; return Top-K most-read articles; \
-  support sliding time windows (past 1 hour, past 24 hours).\
-- Non-Functional Reqs: Ingestion must be non-blocking and highly available; \
-  `get_most_read_articles()` response time < 20ms.\
-\
-Stage 02: Interactions (APIs)\
-- Event Ingestion: POST /events/read -> Request body: `\{article_id, user_id, timestamp\}`\
-- Read API: GET /articles/trending?window=24h&limit=10 -> Returns: `[\{"article_id": "art_10", "reads": 45200\}]`\
-\
-Stage 03: Data Model\
-- raw_reads: article_id, timestamp (Ingested to stream/Kafka, not directly to SQL).\
-- aggregated_counts: article_id, time_bucket (1-minute slice), read_count.\
-- Storage: Redis Sorted Sets (ZSET) for real-time Top-K ranking: `ZREVRANGEBYSCORE`.\
-\
-Stage 04: Simple Design\
-- Client App -> Event Ingest Service -> Buffer Queue -> Aggregator -> Redis Sorted Set -> API Server.\
-\
-Stage 05: Challenge & Improve\
-- Sliding-Window Aggregation: Dividing 24 hours into 1,440 1-minute buckets. Background \
-  worker maintains rolling count by adding the newest minute and evicting the oldest minute.\
-- Cache Invalidation & Heavy Write Load: Never write directly to database per click. \
-  Batch events in memory at the ingestion layer (flush every 1,000 events or 1 second) \
-  and execute atomic Redis increments: `ZINCRBY trending_24h 1 \{article_id\}`.\
-- Cold Cache Recovery: Periodically snapshot top-K rankings to PostgreSQL every 5 minutes.\
-================================================================================}
+--------------------------------------------------------------------------------
+PART 1: AI CODEBASE GENERATOR PROMPTS (PRACTICE REPOS)
+--------------------------------------------------------------------------------
+Use these prompts in an LLM (Claude, Cursor, ChatGPT) to generate realistic,
+multi-file practice codebases with passing baseline tests and stubbed logic.
+
+[PROMPT 1: REALISTIC PRODUCT CONTRACT GENERATOR (ANY DOMAIN)]
+--------------------------------------------------------------------------------
+Act as a Senior Bloomberg Engineering Interviewer setting up an AI-assisted codebase
+interview repository. I am the candidate practicing contract-driven defect isolation,
+prompt discipline, and the official Bloomberg Debug Loop.
+
+Generate a realistic Python repository (standard library + pytest) modeling a
+real product domain (e.g., hotel room booking & billing, warehouse fulfillment, or
+subscription lifecycle; do NOT use lottery/draw mechanics).
+
+Requirements:
+1. Architecture & Models:
+   - app/models.py: Domain entities using dataclasses.
+     * Enforce integer cents/basis points for financial values (never float).
+     * Enforce strict Enum classes for discrete states and lifecycles.
+     * Enforce frozen snapshots (@dataclass(frozen=True)) and immutable tuples
+       (tuple[...], never live mutable list[...]) for closed/historical records.
+   - app/exceptions.py: Explicit domain exception hierarchy.
+   - Core Orchestrator (e.g., app/service.py): Stateless coordinator.
+   - State / Storage (e.g., app/repository.py): In-memory state tracking.
+   - Injectable Dependency: Clock or ID generator for deterministic testing.
+2. The Stubbed Function:
+   - Exactly ONE core business logic function stubbed with:
+     raise NotImplementedError("candidate task")
+   - Depends on underlying foundations and helper methods being correct.
+3. Spec & Ambiguity Requirements (spec.md):
+   - 1-page specification with 5-8 concrete rules and ONE fully calculated worked
+     example with hand-computed numbers.
+   - Leave 4-6 realistic ambiguities open (e.g., boundary inclusivity, remainder
+     routing on splits, ties, mutation guard after finalized state).
+   - Do NOT flag where ambiguities or bugs are.
+4. Bug Injection (Misalignments Against Spec):
+   - Inject 4 subtle bugs into the existing code:
+     * At least 2 policy-dependent bugs (violating intended interpretation of an
+       open ambiguity).
+     * At least 1 lifecycle / sequencing bug (e.g., mutation after closure).
+     * At least 1 boundary / formatting / remainder defect.
+5. Shallow Baseline Test Suite (tests/test_question.py):
+   - 2-3 passing tests covering only the basic happy path.
+   - Tests must run 100% GREEN out of the box (false confidence).
+   - Do NOT test the stubbed function in the starter tests.
+--------------------------------------------------------------------------------
+
+
+[PROMPT 2: THE OFFICIAL "POT LUCK" COMMUNITY LOTTERY ENGINE]
+--------------------------------------------------------------------------------
+Generate the multi-file Python repository for the Bloomberg "Pot Luck" problem:
+
+1. Spec Rules & Domain Invariants:
+   - Base pot starts at $10,000 (1,000,000 integer cents); tickets cost $5 (500 cents).
+   - Code assignment: generates a 5-digit code string from "00000" to "99999" inclusive.
+   - Reverse-order claim priority: 5 matches (100%), 4 matches (40%), 3 matches (20%),
+     2 matches (5%), 1 match (0%). Higher tiers claim first; remaining pot rolls over.
+   - Closed Draw Invariant: Once closed, entries_snapshot is a frozen tuple of Entry.
+   - Rounding remainder: Indivisible odd cents route to rollover rather than leaking.
+2. Codebase Files:
+   - app/models.py: Entry, Draw, Payout, PayoutPlan, MatchTier (Enum).
+   - app/generator.py: CodeGenerator taking injectable _random_source callable.
+   - app/lottery_engine.py: DrawManager coordinating draws and payouts.
+   - app/exceptions.py: DrawClosedError, InvalidCodeError.
+   - Stubbed Method: DrawManager.calculate_payouts(draw_id) -> PayoutPlan
+     stubbed with raise NotImplementedError("candidate task").
+   - tests/test_lottery.py: 2-3 passing happy-path tests.
+3. Planted Misalignments:
+   - In generator.py: `number = int(self._random_source() * 99_999)` and `str(number)`.
+     (Off-by-one upper bound and dropped leading zeros).
+   - In lottery_engine.py: closed draw holds a live mutable list reference;
+     matching helper treats codes as unordered digit sets rather than positional indices.
+
+
+--------------------------------------------------------------------------------
+PART 2: THE 45-MINUTE AI INTERVIEW PROTOCOL
+--------------------------------------------------------------------------------
+Graded on: Visible reasoning, critical AI guidance, and code ownership.
+Core Rule: "If you can't explain it, don't ship it."
+
+PHASE 1: SPEC & CLARIFICATION (00:00 - 06:00)
+- Read spec.md completely before touching code or prompting AI.
+- Summarize rules as a 5-point checklist on scratchpad.
+- Identify 3-4 open ambiguities (boundaries, remainder splits, tie breaks, event closure).
+- Clarify checklist formula:
+  Say aloud: "I'm assuming X; I'll add an assumption test so that decision is explicit."
+
+PHASE 2: REPO MAPPING & BASELINE (06:00 - 12:00)
+- Run pytest in terminal: Verify tests are 100% GREEN (false confidence check).
+- Execute 4-Bucket Map:
+  1. Entry Points: tests/test_question.py, main.py
+  2. Domain Models: models.py (Audit: integer cents? frozen tuples? enums?)
+  3. Orchestrator: service.py / engine.py (__init__ deps & main method contract)
+  4. State / Adapters: repository.py / in-memory stores (Audit: mutable leaks?)
+- Bounded AI Mapping Prompt:
+  "In question.py, point me to the functions responsible for:
+   1. [Feature X]
+   2. [Feature Y]
+   3. [Feature Z]
+   For each, give the symbol name and a one-line description. Do not edit files."
+- Verify AI's answer directly in the files.
+
+PHASE 3: CONTRACT DIAGNOSIS & MINIMAL PATCHES (12:00 - 26:00)
+The 6-Step Debug Loop (Spec Claim -> Suspect Code -> Hypothesis -> Explain -> Test -> Fix):
+- For each spec rule / ambiguity:
+  1. Spec Claim: Identify the violated behavioral rule or stated assumption.
+  2. Suspect Code: Navigate to the single offending function.
+  3. Hypothesis: State why the current code breaks the invariant out loud.
+  4. Scaffolding Prompt (Test Scaffolding Only):
+     "Propose a minimal deterministic pytest fixture testing [Function] where
+      input is [Exact Value] and expected output is [Exact Expected]."
+  5. Confirm RED: Run the test. Verify it fails for the exact reason predicted.
+  6. Minimal Patch (GREEN): Hand-edit the minimal fix. Rerun full suite.
+
+PHASE 4: IMPLEMENT THE STUBBED FUNCTION (26:00 - 38:00)
+- Only touch the stub after foundational bugs and helpers are completely fixed.
+- Write planned test cases first:
+  * Hand-computed worked example from the spec
+  * Boundary / zero-winner condition
+  * Split with indivisible remainder cents
+- Implement the stub logic cleanly, respecting immutable dataclasses and integer math.
+- Run tests: Verify GREEN across the entire suite.
+
+PHASE 5: VALIDATE INVARIANTS & AUDIT RISKS (38:00 - 45:00)
+- Hand-check invariants: e.g., awarded_cents + rollover_cents == pot_cents.
+- Rerun full test suite.
+- Proactively name 2-3 remaining risks to the interviewer:
+  "Remaining risks and unverified assumptions are:
+   1. [Untested concurrency or high-volume scenario]
+   2. [Specific assumption made regarding tie-breaks]
+   3. [Boundary scenario still lacking stress coverage]"
+
+
+--------------------------------------------------------------------------------
+PART 3: PROMPT DISCIPLINE CHEATSHEET
+--------------------------------------------------------------------------------
+PERMITTED PROMPTS:
+• Summarize: "Read spec.md only. Summarize rules as a checklist, list ambiguities. No code."
+• Map: "Point me to the functions for X, Y, Z. Symbol name + 1 line. Don't edit files."
+• Challenge: "List up to 4 likely contract violations of these rules, with the smallest
+  input that exposes each. Don't patch."
+• Test Scaffolding: "Given Account(balance_cents=10000) and Order(cost_cents=10000),
+  scaffold a pytest test asserting InsufficientFundsError is NOT raised."
+• Diff Review: "Review this diff against the contract. Call out assumptions and what
+  tests still don't prove."
+
+DISQUALIFYING PROMPTS:
+✗ "Find the bugs in this repository."
+✗ "Fix this function." / "Rewrite this class to make tests pass."
+✗ "Solve ticket POT-102."
+✗ Letting the AI choose an interpretation for an ambiguity without you deciding.
+
+
+--------------------------------------------------------------------------------
+PART 4: BLOOMBERG 5-STAGE SYSTEM DESIGN QUESTION BANK
+--------------------------------------------------------------------------------
+Standard 5-Stage Framework:
+Stage 01: Clarify (Scope, Functional/Non-Functional Reqs, Out-of-Scope)
+Stage 02: Interactions (Client Actions, Complete REST/gRPC APIs, Status Codes)
+Stage 03: Identify Data (Relational Schema, PK/FK, Invariants, ACID Rationale)
+Stage 04: Draw Simple Design (Client <-> Service <-> SQL Database; No premature scale)
+Stage 05: Challenge & Improve (Bottlenecks, Caching, Invalidation, Concurrency, Failures)
+
+================================================================================
+QUESTION 1: ROOM BOOKING SYSTEM (Official Bloomberg Workshop Question)
+================================================================================
+Stage 01: Clarify
+- Functional Reqs: Filter rooms (building, capacity, facilities); reserve time slot;
+  cancel booking; view my bookings.
+- Non-Functional Reqs: Latency < 50ms for search; zero double-booking (strong consistency).
+- Out of Scope: Payments, recurring series, badge IoT access.
+
+Stage 02: Interactions (APIs)
+- GET /rooms?building={b}&min_capacity={c}&facilities={f}&start_time={t1}&end_time={t2}
+- GET /rooms/{id} -> Room details
+- GET /me/bookings -> List current user bookings
+- POST /bookings -> Body: {room_id, start_time, end_time}. Returns: {booking_id, status: CONFIRMED}
+- DELETE /bookings/{id} -> Returns: 204 No Content
+
+Stage 03: Data Model (PostgreSQL / Relational)
+- users: user_id (PK), name, email, department
+- rooms: room_id (PK), building, capacity, facilities (ARRAY/JSON), is_active
+- bookings: booking_id (PK), user_id (FK), room_id (FK), start_time (TIMESTAMP),
+  end_time (TIMESTAMP), status (Enum: PENDING, CONFIRMED, CANCELLED)
+- Domain Invariant: No overlapping active bookings for the same room:
+  EXCLUDE USING gist (room_id WITH =, tsrange(start_time, end_time) WITH &&)
+  WHERE (status = 'CONFIRMED')
+
+Stage 04: Simple Design
+- Client App <---> Booking Service <---> PostgreSQL Database
+- Booking Service runs validation, SQL transactions, and availability queries.
+
+Stage 05: Challenge & Improve
+- Bottleneck: Frequent room search queries overload database reads.
+- Mitigation: Redis cache for static room metadata and precomputed availability bitsets.
+- Cache Invalidation: Invalidate affected room-date search cache keys on booking create/cancel.
+- Concurrency / Double Booking: Concurrent booking attempts for same room-time slot handled
+  via DB transaction with SELECT FOR UPDATE or PostgreSQL exclusion constraint.
+
+================================================================================
+QUESTION 2: HOLIDAY SERVICE (Low-Latency C++ SDK & Aggregator)
+================================================================================
+Stage 01: Clarify
+- Functional Reqs: Return holiday list (date, name, observed status); historical & future years.
+- Non-Functional Reqs: End-to-end client latency < 5ms; 99.99% availability; graceful fallback.
+- Out of Scope: Personal calendars, dynamic labor laws.
+
+Stage 02: Interactions (APIs)
+- Client SDK Interface: std::vector<Holiday> getData(const std::string& countryCode, int year);
+- Service REST API: GET /v1/holidays?country={countryCode}&year={year}
+- Response: 200 OK: {"country": "US", "year": 2027, "holidays": [{"date": "2027-01-01", "name": "New Year's Day"}]}
+
+Stage 03: Data Model
+- holidays: id (PK), country_code (CHAR(2)), year (INT), holiday_date (DATE),
+  name (VARCHAR), is_observed (BOOL), last_updated (TIMESTAMP)
+- Unique Index: (country_code, year, holiday_date)
+
+Stage 04: Simple Design
+- Client App -> C++ Adapter Library -> Holiday Service -> Upstream External API
+
+Stage 05: Challenge & Improve
+- Multi-Tier Caching Architecture:
+  * Tier 1 (Client-Side C++ In-Memory Cache): Process RAM inside C++ library
+    (LRU Cache with 24-hr TTL). Latency: < 10 microseconds.
+  * Tier 2 (Distributed Redis Cache): Shared across all Holiday Service instances.
+- Precomputation / Background Sync: Holidays change rarely; daily cron worker pre-fetches
+  and warms Redis cache for (current_year, current_year + 1).
+- Resilience: If upstream service fails, return stale cache data with degraded fallback header.
+
+================================================================================
+QUESTION 3: REAL-TIME VWAP ANALYTICS PROVIDER
+================================================================================
+Stage 01: Clarify
+- Math Formula: VWAP = (Sum of Price * Volume) / (Sum of Volume) for time window T.
+- Capacity: 1M symbols * 100 ticks/sec = 100,000,000 ticks/sec peak volume.
+- Users: 100K live UI users (WebSocket push), 1K enterprise users (REST API).
+
+Stage 02: Interactions (APIs)
+- Feed Ingestion: High-speed TCP/UDP feed handlers normalizing exchange formats.
+- WebSocket Stream: SUBSCRIBE /vwap/{symbol}?window=1h -> Pushes {symbol, vwap, volume, timestamp}.
+- Enterprise Query API: GET /v1/vwap?symbol=AAPL&start_time={t1}&end_time={t2}
+
+Stage 03: Data Model & Invariants
+- Canonical Tick: symbol (str), price_cents (int), quantity (int), timestamp_ns (int).
+- Running Aggregate State: symbol (PK), window_start, cum_volume (int), cum_pv_cents (int).
+- VWAP Invariant: Computed on the fly via integer division cum_pv_cents // cum_volume.
+
+Stage 04: Simple Design
+- Exchange Feeds -> Ingestion Gateway -> Stream Processor (Flink/Kafka) -> Redis -> WebSockets/API.
+
+Stage 05: Challenge & Improve
+- Sharding Strategy: Shard streaming processors strictly by hash(symbol) % N_partitions.
+  Ensures all ticks for a single symbol arrive at the same stateful aggregation worker in order.
+- Fault Tolerance: Checkpoint cumulative state (cum_pv, cum_vol) to compacted changelog
+  topics every 500ms. On worker crash, state recovers in < 1 second.
+- WebSocket Fan-Out: Pub/Sub tier (Redis / NATS) broadcasting to stateless WebSocket edge nodes.
+
+================================================================================
+QUESTION 4: BUILD CACHE (CI/CD Acceleration)
+================================================================================
+Stage 01: Clarify
+- Functional Reqs: Check if input signature is already built; download pre-built binary
+  artifact; upload new artifact on cache miss.
+- Non-Functional Reqs: Cache lookup < 20ms; multi-gigabit throughput; cryptographic correctness.
+- Out of Scope: Compiling source code (handled by build runners).
+
+Stage 02: Interactions (APIs)
+- GET /v1/artifacts/{hash_key} -> Stream binary blob (200 OK) or 404 Not Found.
+- PUT /v1/artifacts/{hash_key} -> Upload binary artifact stream with metadata.
+
+Stage 03: Data Model & Invariants
+- Content-Addressed Hash: hash_key = SHA256(source_code_files + compiler_version + flags + env_deps)
+- Artifact Metadata Table (PostgreSQL):
+  * hash_key (PK, CHAR(64)), artifact_size_bytes (BIGINT), s3_storage_uri (VARCHAR),
+    created_at (TIMESTAMP), last_accessed_at (TIMESTAMP)
+- Storage Tier: Raw binary blobs stored in distributed Blob Storage (S3 / Ceph).
+
+Stage 04: Simple Design
+- Build Agent <---> Cache Service (Metadata Lookup) <---> Blob Storage (S3) + PostgreSQL DB.
+
+Stage 05: Challenge & Improve
+- Eviction Policy: LRU paired with TTL (evict artifacts not requested in 20 days).
+- Consistent Hashing: Shard local fast NVMe SSD edge storage servers using consistent
+  hash ring with virtual nodes for high-throughput streaming.
+- Cache Stampede: Mutex locking / single-flight pattern: when 50 jobs build the exact
+  same commit simultaneously, only 1 job builds and 49 await the cached artifact.
+
+================================================================================
+QUESTION 5: WEB APP DESIGN (Sensitive Financial Information)
+================================================================================
+Stage 01: Clarify
+- Functional Reqs: Secure auth (MFA), password reset, company financial filings queries,
+  and IT support ticket management.
+- Non-Functional Reqs: SOC2 / PCI-DSS compliance; zero-downtime blue/green deployments;
+  immutable audit trail for all sensitive reads/writes.
+
+Stage 02: Interactions (APIs)
+- POST /auth/login -> {email, password_hash, mfa_token} -> Returns JWT session cookie.
+- POST /auth/password-reset/request -> Triggers signed time-limited reset email.
+- GET /api/v1/companies/{id}/financials -> Sensitive financial filings (requires RBAC check).
+- POST /api/v1/support/tickets -> Submit encrypted IT ticket.
+
+Stage 03: Data Model
+- users: user_id (PK), email (UNIQUE), password_hash (Argon2), role_id (FK), mfa_secret
+- roles_permissions: role_id, permission_enum (e.g., READ_FINANCIALS, MANAGE_USERS)
+- audit_log (Append-Only): log_id (PK), timestamp, user_id, action, resource_id, ip_address, signature
+- Database Choice: PostgreSQL with Row-Level Security (RLS) and column-level encryption for PII.
+
+Stage 04: Simple Design
+- Client Browser <-> API Gateway / WAF <-> App Backend Service <-> PostgreSQL Database.
+
+Stage 05: Challenge & Improve
+- Zero-Downtime Blue/Green Deployments: Deploy duplicate Green environment; run smoke tests;
+  shift traffic at load balancer level; roll back immediately on error rate spike.
+- Token Revocation / Logout: Short-lived JWTs (15 min) + Redis distributed blocklist for logout.
+- Defense in Depth: API Gateway rate limits password-reset endpoints to prevent brute-force attacks.
+
+================================================================================
+QUESTION 6: KAFKA / DISTRIBUTED LOG DESIGN
+================================================================================
+Stage 01: Clarify
+- Functional Reqs: Publish messages to topics; consume messages from topics starting at
+  an offset; maintain strict FIFO ordering within each partition; support consumer groups.
+- Non-Functional Reqs: Append-only disk write speeds; fault-tolerant replication (tolerating N-1 broker failures).
+
+Stage 02: Interactions (APIs)
+- Producer SDK: send(topic, key, value, acks)
+- Consumer SDK: poll(timeout), commit(offset)
+- Broker RPC: AppendEntries(topic, partition, messages), Fetch(topic, partition, offset, max_bytes)
+
+Stage 03: Data Model & Storage Engine
+- On-Disk Storage Format: Append-only commit log files (e.g., 0000000000.log) segmented at 1GB.
+- Index File (0000000000.index): Memory-mapped sparse index mapping logical offset -> physical byte offset.
+- Message Record: offset (INT64), timestamp (INT64), key_bytes, value_bytes, crc32.
+
+Stage 04: Simple Design
+- Producer -> Broker Leader (Append-only write to active segment) -> Consumer reads via offset.
+
+Stage 05: Challenge & Improve
+- Message Ordering Guarantee: Strict ordering is guaranteed ONLY per partition.
+  Producers hash message keys to assign partitions: partition = hash(key) % num_partitions.
+- Network Failures & Misrouted Messages: If Producer 1 tries to send to Broker 2 due to network error,
+  Broker 1 rejects it with NOT_LEADER_OR_FOLLOWER. Producer metadata refreshes cluster state.
+- Durability vs. Availability (CAP Trade-off):
+  * acks=all: Leader waits for In-Sync Replicas (ISR) to commit before acknowledging.
+  * Quorum math: Min-ISR = 2 with replication factor 3 prevents split-brain during partitions.
+
+================================================================================
+QUESTION 7: NEWS FEED / MOST READ ARTICLES
+================================================================================
+Stage 01: Clarify
+- Functional Reqs: Ingest click events; return Top-K articles; support rolling windows (1h, 24h).
+- Non-Functional Reqs: Non-blocking ingestion; get_most_read_articles() latency < 20ms.
+
+Stage 02: Interactions (APIs)
+- Event Ingestion: POST /events/read -> Request body: {article_id, user_id, timestamp}
+- Read API: GET /articles/trending?window=24h&limit=10 -> Returns: [{"article_id": "art_10", "reads": 45200}]
+
+Stage 03: Data Model
+- raw_reads: article_id, timestamp (Ingested to stream/Kafka, not directly to SQL).
+- aggregated_counts: article_id, time_bucket (1-minute slice), read_count.
+- Storage: Redis Sorted Sets (ZSET) for real-time Top-K ranking: ZREVRANGEBYSCORE.
+
+Stage 04: Simple Design
+- Client App -> Event Ingest Service -> Buffer Queue -> Aggregator -> Redis Sorted Set -> API Server.
+
+Stage 05: Challenge & Improve
+- Sliding-Window Aggregation: Dividing 24 hours into 1,440 1-minute buckets. Background
+  worker maintains rolling count by adding the newest minute and evicting the oldest minute.
+- Cache Invalidation & Heavy Write Load: Never write directly to database per click.
+  Batch events in memory at ingestion layer (flush every 1,000 events or 1 second)
+  and execute atomic Redis increments: ZINCRBY trending_24h 1 {article_id}.
+- Cold Cache Recovery: Periodically snapshot top-K rankings to PostgreSQL every 5 minutes.
+================================================================================
